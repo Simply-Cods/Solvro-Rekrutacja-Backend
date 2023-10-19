@@ -45,6 +45,7 @@ builder.Services
     .AddScoped<IProjectRepository, ProjectRepository>()
     .AddScoped<IUserRepository, UserRepository>()
     .AddScoped<IProjectMemberMappingRepository, ProjectMemberMappingRepository>()
+    .AddScoped<ITaskRepository, TaskRepository>()
     ;
 
 var app = builder.Build();

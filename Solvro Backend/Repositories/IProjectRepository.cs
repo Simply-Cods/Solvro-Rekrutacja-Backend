@@ -7,5 +7,6 @@ namespace Solvro_Backend.Repositories
         List<Project> GetAllProjects();
         Task<Project> CreateProject(Project project);
         Project? GetProject(long id);
+        List<Project> GetProjectsForUser(long userId);
     }
 }

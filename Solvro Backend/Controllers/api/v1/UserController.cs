@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Solvro_Backend.DTOs;
+using Solvro_Backend.Models;
 using Solvro_Backend.Models.Database;
 using Solvro_Backend.Models.Views;
 using Solvro_Backend.Repositories;
@@ -19,7 +20,8 @@ namespace Solvro_Backend.Controllers
         [HttpGet("user")]
         public IActionResult GetAllUsers()
         {
-            return Ok(_userRepository.GetAllUsers().Select(u => new UserView(u)));
+            var data = _userRepository.GetAllUsers().Select(u => new UserView(u));
+            return ApiResponse.Ok(data);
         }
 
         [HttpPost("user")]
@@ -27,12 +29,12 @@ namespace Solvro_Backend.Controllers
         {
             User user = new()
             {
-                Specialization = dto.Specialization
+                Specialization = dto.Specialization!.Value
             };
 
             user = await _userRepository.CreateUser(user);
 
-            return StatusCode(201, new UserView(user));
+            return ApiResponse.Created(new UserView(user));
         }
     }
 }

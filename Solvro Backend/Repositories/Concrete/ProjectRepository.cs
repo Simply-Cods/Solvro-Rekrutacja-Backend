@@ -23,5 +23,10 @@ namespace Solvro_Backend.Repositories
         {
             return Database.SelectProject(id);
         }
+
+        public List<Project> GetProjectsForUser(long userId)
+        {
+            return Database.SelectProjectsForUser(userId);
+        }
     }
 }

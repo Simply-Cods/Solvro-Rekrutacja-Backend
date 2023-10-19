@@ -8,7 +8,7 @@ namespace Solvro_Backend.Models.Views
         public UserView Owner { get; set; }
         public string Name { get; set; }
         public List<UserView> Members { get; set; }
-        //public List<TaskView> Tasks { get; set; }
+        public List<TaskView> Tasks { get; set; }
 
         public ProjectFullView(Project project)
         {
@@ -16,6 +16,7 @@ namespace Solvro_Backend.Models.Views
             Owner = new UserView(project.Owner);
             Name = project.Name;
             Members = project.ProjectMemberMappings.Select(m => new UserView(m.User)).ToList();
+            Tasks = project.Tasks.Select(t => new TaskView(t)).ToList();
         }
     }
 }

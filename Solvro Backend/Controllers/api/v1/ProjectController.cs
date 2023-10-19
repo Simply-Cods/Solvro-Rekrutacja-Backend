@@ -1,8 +1,12 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Solvro_Backend.DTOs;
 using Solvro_Backend.Models.Views;
+using Solvro_Backend.Models;
 using Solvro_Backend.Repositories;
 using Solvro_Backend.Models.Database;
+
+using STask = Solvro_Backend.Models.Database.Task;
+using Solvro_Backend.Enums;
 
 namespace Solvro_Backend.Controllers
 {
@@ -12,12 +16,14 @@ namespace Solvro_Backend.Controllers
         private IProjectRepository _projectRepository;
         private IUserRepository _userRepository;
         private IProjectMemberMappingRepository _projectMemberMappingRepository;
+        private ITaskRepository _taskRepository;
 
         public ProjectController(IServiceProvider serviceProvider) 
         {
             _projectRepository = serviceProvider.GetRequiredService<IProjectRepository>();
             _userRepository = serviceProvider.GetRequiredService<IUserRepository>();
             _projectMemberMappingRepository = serviceProvider.GetRequiredService<IProjectMemberMappingRepository>();
+            _taskRepository = serviceProvider.GetRequiredService<ITaskRepository>();
         }
 
         [HttpGet("project")]
@@ -29,26 +35,15 @@ namespace Solvro_Backend.Controllers
             {
                 views = dbResult.Select(p => new ProjectView(p)).ToList();
             }
-            return Ok(views);
+            return ApiResponse.Ok(views);
         }
 
         [HttpPost("project")]
         public async Task<IActionResult> CreateProject([FromBody] CreateProjectDto dto)
         {
-            User? owner = _userRepository.GetUser(dto.OwnerId);
-            if(owner == null)
-                return NotFound($"User with the ID of {dto.OwnerId} does not exist and cannot be assigned as owner");
-            
-
-            List<User> members = new();
-            foreach(long userId in dto.MemberIds)
-            {
-                User? member = _userRepository.GetUser(userId);
-                if (member == null)
-                    return NotFound($"User with the ID of {userId} does not exist and cannot be assigned as member");
-                    
-                members.Add(member);
-            }
+            User? owner = _userRepository.GetUser(dto.OwnerId!.Value);
+            if (owner == null)
+                return ApiResponse.NotFound($"User with the ID of {dto.OwnerId} does not exist and cannot be assigned as owner");            
 
             Project project = new()
             {
@@ -57,9 +52,27 @@ namespace Solvro_Backend.Controllers
             };
             project = await _projectRepository.CreateProject(project);
 
-            List<ProjectMemberMapping> mappings = new();
+            ApiResponse okResult = ApiResponse.Created(new ProjectView(project));
 
-            foreach(User user in members)
+            List<ProjectMemberMapping> mappings = new();
+            List<User> members = new();
+            List<ApiResponse> errors = new()
+            {
+                okResult // we add the ok result here to send it along with the errors
+            };
+
+            foreach (long userId in dto.MemberIds)
+            {
+                User? member = _userRepository.GetUser(userId);
+                if (member == null)
+                {
+                    errors.Add(ApiResponse.NotFound($"User with the ID of {userId} does not exist and cannot be assigned as member"));
+                    continue;
+                }
+                members.Add(member);
+            }
+
+            foreach (User user in members)
             {
                 ProjectMemberMapping mapping = new()
                 {
@@ -73,21 +86,110 @@ namespace Solvro_Backend.Controllers
                 await _projectMemberMappingRepository.BulkCreateMapping(mappings);
             } catch (Exception ex)
             {
-                return StatusCode(207, new object[] {
-                    StatusCode(201, new ProjectView(project)),
-                    StatusCode(500, ex.Message)
-                });
+                errors.Add(ApiResponse.ServerError("Failed to create member mappings. Exception in response body", ex));
             }
+
+            if(errors.Count > 1)
+                return ApiResponse.MultiStatus(errors);
             
-            return StatusCode(201, new ProjectView(project));
+            
+            return okResult;
         }
 
         [HttpGet("project/{projectId}")]
         public IActionResult GetProject([FromRoute] long projectId)
         {
             Project? project = _projectRepository.GetProject(projectId);
-            if (project == null) return NotFound($"Project with the ID of {projectId} does not exist");
-            return Ok(new ProjectFullView(project));
+            if (project == null) 
+                return ApiResponse.NotFound($"Project with the ID of {projectId} does not exist");
+            return ApiResponse.Ok(new ProjectFullView(project));
+        }
+
+        [HttpGet("project/user")]
+        public IActionResult GetProjectsForUser([FromQuery] long userId)
+        {
+            return ApiResponse.Ok(_projectRepository.GetProjectsForUser(userId).Select(p => new ProjectFullView(p)));
+        }
+
+        [HttpPost("project/{projectId}/task")]
+        public async Task<IActionResult> CreateTask([FromRoute]long projectId, [FromBody] CreateTaskDto dto)
+        {
+            Project? project = _projectRepository.GetProject(projectId);
+            if (project == null)
+                return ApiResponse.NotFound($"Project with the ID of {projectId} does not exist");
+
+            User? creator = _userRepository.GetUser(dto.CreatorId!.Value);
+            if (creator == null)
+                return ApiResponse.NotFound($"User with the ID of {dto.CreatorId} does not exist and cannot be assigned as owner");
+
+            STask task = new()
+            {
+                Project = project,
+                Name = dto.Name,
+                CreatedAt = DateTime.UtcNow,
+                Estimation = dto.Estimation!.Value,
+                Specialization = dto.Specialization!.Value,
+                State = TaskState.Open,
+                Creator = creator
+            };
+
+            ApiResponse potentialNotFound = null;
+            if(dto.AssignedUserId != null)
+            {
+                User? assignedUser = _userRepository.GetUser(dto.AssignedUserId.Value);
+                if (assignedUser == null)
+                {
+                    potentialNotFound = ApiResponse.NotFound($"User with the ID of {dto.AssignedUserId} does not exist and cannot be assigned");
+                }
+                else
+                {
+                    task.AssignedUser = assignedUser;
+                    task.State = TaskState.ToDo;
+                }
+            }
+
+            task = await _taskRepository.CreateTask(task);
+
+            var successResponse = ApiResponse.Created(new TaskView(task));
+
+            if(potentialNotFound != null)
+            {
+                return ApiResponse.MultiStatus(new()
+                {
+                    successResponse,
+                    potentialNotFound
+                });
+            }
+
+            return successResponse;
+        }
+
+        [HttpPut("project/{projectId}/task/{taskId}")]
+        public async Task<IActionResult> UpdateTaskStatus([FromRoute] long projectId, [FromRoute] long taskId, [FromBody] UpdateTaskStatusDto dto)
+        {
+            (STask? task, bool projectExists) = _taskRepository.SelectTask(projectId, taskId);
+
+            if(task == null)
+            {
+                return projectExists
+                    ? ApiResponse.NotFound($"Task with the ID of {taskId} does not exist.")
+                    : ApiResponse.NotFound($"Project with the ID of {projectId} does not exist.");
+            }
+
+            task.State = dto.State!.Value;
+
+            if(task.State == TaskState.Done)
+            {
+                task.CompletedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                task.CompletedAt = null;
+            }
+
+            task = await _taskRepository.UpdateTask(task);
+
+            return ApiResponse.Ok(new TaskView(task));
         }
     }
 }

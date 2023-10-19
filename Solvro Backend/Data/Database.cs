@@ -37,9 +37,20 @@ namespace Solvro_Backend.Data
         {
             return _context.Projects
                 .Include(p => p.Owner)
-                .Include(p => p.ProjectMemberMappings).ThenInclude(m => m.User) //if this was enterprise, this would be unacceptable, but it works
-                .Include(p => p.Tasks)
+                .Include(p => p.ProjectMemberMappings).ThenInclude(m => m.User)
+                .Include(p => p.Tasks).ThenInclude(t => t.AssignedUser)
+                .Include(p => p.Tasks).ThenInclude(t => t.Creator)
                 .AsQueryable().FirstOrDefault(p => p.Id == id);
+        }
+
+        public List<Project> SelectProjectsForUser(long userId)
+        {
+            return _context.Projects
+                .Include(p => p.Owner)
+                .Include(p => p.ProjectMemberMappings).ThenInclude(m => m.User)
+                .AsQueryable().Where(p => p.Owner.Id == userId || p.ProjectMemberMappings.Any(m => m.User.Id == userId))
+                .Include(p => p.Tasks)
+                .ToList();
         }
 
         #endregion
@@ -73,6 +84,29 @@ namespace Solvro_Backend.Data
         public ProjectMemberMapping? SelectProjectMemberMapping(long id)
         {
             return _context.ProjectMemberMappings.AsQueryable().FirstOrDefault(m => m.Id == id);
+        }
+
+        #endregion
+
+        #region Task Handling
+
+        public EntityEntry<STask> CreateTask(STask task)
+        {
+            return _context.Tasks.Add(task);
+        }
+
+        public STask? SelectTask(long id)
+        {
+            return _context.Tasks.AsQueryable()
+                .Include(t => t.Project)
+                .Include(t => t.AssignedUser)
+                .Include(t => t.Creator)
+                .FirstOrDefault(t => t.Id == id);
+        }
+
+        public EntityEntry<STask> UpdateTask(STask task)
+        {
+            return _context.Tasks.Update(task);
         }
 
         #endregion
