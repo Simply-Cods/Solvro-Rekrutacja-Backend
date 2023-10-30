@@ -12,6 +12,7 @@ namespace Solvro_Backend.DTOs
         [Required(ErrorMessage = "Estimation is required")]
         public int? Estimation { get; set; }
         [Required(ErrorMessage = "Specialization is required")]
+        [EnumDataType(typeof(Specialization), ErrorMessage = "Specialization must be a valid enum member")]
         public Specialization? Specialization { get; set; }
         [Required(ErrorMessage = "CreatorId is required")]
         public long? CreatorId { get; set; }

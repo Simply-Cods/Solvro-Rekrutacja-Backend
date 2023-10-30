@@ -49,7 +49,8 @@ namespace Solvro_Backend.Data
                 .Include(p => p.Owner)
                 .Include(p => p.ProjectMemberMappings).ThenInclude(m => m.User)
                 .AsQueryable().Where(p => p.Owner.Id == userId || p.ProjectMemberMappings.Any(m => m.User.Id == userId))
-                .Include(p => p.Tasks)
+                .Include(p => p.Tasks).ThenInclude(t => t.AssignedUser)
+                .Include(p => p.Tasks).ThenInclude(t => t.Creator)
                 .ToList();
         }
 

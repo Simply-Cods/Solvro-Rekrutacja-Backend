@@ -191,5 +191,20 @@ namespace Solvro_Backend.Controllers
 
             return ApiResponse.Ok(new TaskView(task));
         }
+
+        private static Dictionary<Guid, AssignmentView> s_assignmentCache = new();
+
+        [HttpPost("project/{projectId}/assignment")]
+        public IActionResult GetAssignment([FromRoute] long projectId)
+        {
+            var propositions = _projectRepository.GetAssignment(projectId);
+            if (propositions == null)
+                return ApiResponse.NotFound($"Project with the ID of {projectId} doesn't exit.");
+
+            var view = new AssignmentView(propositions);
+            s_assignmentCache.Add(view.Id, view);
+
+            return ApiResponse.Created(view);
+        }
     }
 }

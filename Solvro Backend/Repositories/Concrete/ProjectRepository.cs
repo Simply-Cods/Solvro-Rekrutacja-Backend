@@ -1,5 +1,7 @@
 ﻿using Solvro_Backend.Data;
+using Solvro_Backend.Logic;
 using Solvro_Backend.Models.Database;
+using Solvro_Backend.Models.Views;
 
 namespace Solvro_Backend.Repositories
 {
@@ -27,6 +29,15 @@ namespace Solvro_Backend.Repositories
         public List<Project> GetProjectsForUser(long userId)
         {
             return Database.SelectProjectsForUser(userId);
+        }
+
+        public List<(long taskId, long userId)>? GetAssignment(long projectId)
+        {
+            var project = GetProject(projectId);
+            if (project == null)
+                return null;
+
+            return AssignmentAlgorhythm.AssignSimple(new ProjectFullView(project));
         }
     }
 }

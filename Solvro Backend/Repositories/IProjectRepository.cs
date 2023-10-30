@@ -8,5 +8,6 @@ namespace Solvro_Backend.Repositories
         Task<Project> CreateProject(Project project);
         Project? GetProject(long id);
         List<Project> GetProjectsForUser(long userId);
+        List<(long taskId, long userId)>? GetAssignment(long projectId);
     }
 }
