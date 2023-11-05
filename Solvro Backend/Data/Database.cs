@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Solvro_Backend.Models.Database;
 
@@ -19,6 +20,11 @@ namespace Solvro_Backend.Data
         public async Task SaveChangesAsync()
         {
             await _context.SaveChangesAsync();
+        }
+
+        public async Task<IDbContextTransaction> StartTransaction()
+        {
+            return await _context.Database.BeginTransactionAsync();
         }
 
         #region Project Handling

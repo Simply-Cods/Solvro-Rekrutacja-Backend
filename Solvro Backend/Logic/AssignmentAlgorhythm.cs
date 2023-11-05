@@ -1,159 +1,113 @@
 ﻿using Solvro_Backend.Enums;
 using Solvro_Backend.Models.Views;
+using Solvro_Backend.Models;
 
 namespace Solvro_Backend.Logic
 {
     public class AssignmentAlgorhythm
     {
 
-        public static List<(long taskId, long userId)> AssignSimple(ProjectFullView project)
+        ///
+        /// 1. get list of all tasks and developers
+        /// 2. order devs in a list based on number of tasks assigned (ascending)
+        /// 2.5 order tasks to assign based on their estimaton (ascending)
+        /// 3. get first dev in the list and find him a task with the closest estimation to his historical highest
+        /// 4. reorder list and goto step 3
+        ///
+        public static List<Assignment> AssignSimple(ProjectFullView project)
         {
-            var unassignedTasks = project.Tasks.Where(t => t.AssignedUser == null && t.State != TaskState.Done);
+            Dictionary<Specialization, List<TaskView>> taskDict = new();
+            Dictionary<Specialization, List<DeveloperStats>> developerDict = new();
+            List<Assignment> pairings = new();
 
-            Dictionary<Specialization, List<TaskView>> tasksBySpecialization = new();
-            List<(long taskId, long userId)> pairings = new();
-
-            foreach (var task in unassignedTasks)
+            foreach(var dev in project.Members)
             {
-                if(tasksBySpecialization.TryGetValue(task.Specialization, out var list))
-                {
-                    list.Add(task);
-                }
-                else
-                {
-                    tasksBySpecialization.Add(task.Specialization, new List<TaskView>() { task });
-                }
+                if (!developerDict.ContainsKey(dev.Specialization))
+                    developerDict.Add(dev.Specialization, new List<DeveloperStats>());
+
+                developerDict[dev.Specialization].Add(new DeveloperStats(dev, project));
             }
 
-            foreach(var list in tasksBySpecialization.Values)
+            foreach(var list in developerDict.Values)
             {
-                list.Sort((x, y) => x.Estimation.CompareTo(y.Estimation));
+                list.Sort((a, b) => a.CompareTo(b));
             }
-            
-            foreach(var key in tasksBySpecialization.Keys)
+
+            foreach(var task in project.Tasks)
             {
-                var tasks = tasksBySpecialization[key];
+                if (task.State != TaskState.Open)
+                    continue;
+                if (!taskDict.ContainsKey(task.Specialization))
+                    taskDict.Add(task.Specialization, new List<TaskView>());
 
-                Dictionary<int, List<DeveloperStats>> devStatsByEstimation = new();
+                taskDict[task.Specialization].Add(task);
+            }
 
-                foreach (var dev in project.Members.Where(m => m.Specialization == key).Select(u => new DeveloperStats(project, u)))
-                {
-                    int estimation = dev.HighestEstimation == null ? 0 : dev.HighestEstimation.Value;
-                    if (devStatsByEstimation.TryGetValue(estimation, out var list))
-                    {
-                        list.Add(dev);
-                    }
-                    else
-                    {
-                        devStatsByEstimation.Add(estimation, new List<DeveloperStats>() { dev });
-                    }
-                }
-                if (devStatsByEstimation.Count == 0)
+            foreach(var list in taskDict.Values)
+            {
+                list.Sort((a, b) => a.Estimation.CompareTo(b.Estimation));
+            }
+
+            foreach(var tasks in taskDict.Values)
+            {
+                if (!developerDict.ContainsKey(tasks[0].Specialization))
                     continue;
 
-                foreach(var list in devStatsByEstimation.Values)
-                {
-                    list.Sort((x, y) => x.CompareTo(y));
-                }
+                var devs = developerDict[tasks[0].Specialization];
 
-                foreach (var task in tasks)
+                while(tasks.Count > 0)
                 {
-                    var bestFit = GetBestFit(devStatsByEstimation, task);
-                    if (bestFit == null)
-                        continue;
-                    pairings.Add((task.Id, bestFit.developer.Id));
-                }   
+                    var dev = devs[0];
+                    var task = tasks.MinBy(t => Math.Abs(t.Estimation - dev.highestHistoricalEstimation));
+                    pairings.Add(new Assignment() { TaskId = task!.Id, UserId = dev.user.Id});
+                    dev.assignedTaskCost += task.Estimation;
+                    devs.Sort((a, b) => a.CompareTo(b));
+                    tasks.Remove(task);
+                }
             }
+
             return pairings;
         }
 
-        private static DeveloperStats? GetBestFit(Dictionary<int, List<DeveloperStats>> devsByEstimation, TaskView task)
+        public class DeveloperStats
         {
-            int upperLimit = task.Estimation;
-            int lowerLimit = task.Estimation;
+            public UserView user;
+            public int assignedTaskCost;
+            public int highestHistoricalEstimation;
+            public TimeSpan quickestHistoricalCompletion;
 
-            DeveloperStats? bestFit = null;
-
-            while(bestFit == null)
+            public DeveloperStats(UserView dev, ProjectFullView project)
             {
-                if(devsByEstimation.TryGetValue(lowerLimit, out var list))
-                {
-                    bestFit = list[0];
-                    list[0].assignedTasks++;
-                }
-                else if(devsByEstimation.TryGetValue(upperLimit, out list))
-                {
-                    bestFit = list[0];
-                    list[0].assignedTasks++;
-                }
-                else 
-                {
-                    upperLimit++;
-                    lowerLimit++;
-                }
-                list?.Sort((x, y) => x.CompareTo(y));
+                user = dev;
+                highestHistoricalEstimation = 0;
+                quickestHistoricalCompletion = TimeSpan.Zero;
+                assignedTaskCost = 0;
 
-                if (devsByEstimation.Keys.Last() < upperLimit && devsByEstimation.Keys.First() > lowerLimit)
-                    break;
+                foreach(var t in project.Tasks)
+                {
+                    if (t.AssignedUser?.Id != dev.Id)
+                        continue;
+
+                    if(t.State == TaskState.Done)
+                    {
+                        highestHistoricalEstimation = t.Estimation > highestHistoricalEstimation ? t.Estimation : highestHistoricalEstimation;
+                        var span = TimeSpan.FromTicks(t.CompletedAt!.Value.Ticks - t.CreatedAt.Ticks);
+                        quickestHistoricalCompletion = span < quickestHistoricalCompletion ? span : quickestHistoricalCompletion;
+                    }
+                    else
+                    {   
+                        assignedTaskCost += t.Estimation;
+                    }
+                }
             }
 
-            return bestFit;
-        }
-    }
-
-    public class DeveloperStats
-    {
-        public UserView developer;
-        public List<TaskView> completedTasks;
-        public int? HighestEstimation => completedTasks.FirstOrDefault()?.Estimation;
-        public int assignedTasks;
-
-        public DeveloperStats(ProjectFullView project, UserView developer)
-        {
-            this.developer = developer;
-
-            completedTasks = project.Tasks.Where(t => t.AssignedUser?.Id == developer.Id && t.State == TaskState.Done).ToList();
-            completedTasks.Sort((x, y) =>
+            public int CompareTo(DeveloperStats other)
             {
-                int order = x.Estimation.CompareTo(y.Estimation);
-                if (order == 0)
-                {
-                    TimeSpan xTime = new(x.CompletedAt!.Value.Ticks - x.CreatedAt.Ticks);
-                    TimeSpan yTime = new(y.CompletedAt!.Value.Ticks - y.CreatedAt.Ticks);
-                    return xTime.CompareTo(yTime);
-                }
-                return order;
-            });
+                if(assignedTaskCost != other.assignedTaskCost)
+                    return assignedTaskCost.CompareTo(other.assignedTaskCost);
 
-            assignedTasks = project.Tasks.Where(t => t.AssignedUser?.Id == developer.Id && t.State != TaskState.Done).Count();
-        }
-
-        /// <summary>
-        /// Compare based on (in this order): highest estimation of completed tasks, number of currently assigned tasks, 
-        /// timespan between creation and completion of the highest rated task
-        /// </summary>
-        /// <param name="other"></param>
-        /// <returns></returns>
-        public int CompareTo(DeveloperStats other)
-        {
-            if (!HighestEstimation.HasValue && !other.HighestEstimation.HasValue)
-                return 0;
-            if (!HighestEstimation.HasValue || !other.HighestEstimation.HasValue)
-                return HighestEstimation.HasValue ? 1 : -1;
-            int order = HighestEstimation.Value.CompareTo(other.HighestEstimation.Value);
-
-            if (order == 0)
-            {
-                order = assignedTasks.CompareTo(other.assignedTasks);
+                return quickestHistoricalCompletion.CompareTo(other.quickestHistoricalCompletion);
             }
-
-            if (order == 0)
-            {
-                TimeSpan thisTime = new(completedTasks[0].CompletedAt!.Value.Ticks - completedTasks[0].CreatedAt.Ticks);
-                TimeSpan otherTime = new(other.completedTasks[0].CompletedAt!.Value.Ticks - other.completedTasks[0].CreatedAt.Ticks);
-                order = thisTime.CompareTo(otherTime);
-            }
-            return order;
         }
     }
 }

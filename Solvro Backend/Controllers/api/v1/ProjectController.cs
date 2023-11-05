@@ -192,7 +192,7 @@ namespace Solvro_Backend.Controllers
             return ApiResponse.Ok(new TaskView(task));
         }
 
-        private static Dictionary<Guid, AssignmentView> s_assignmentCache = new();
+        private static Dictionary<Guid, List<Assignment>> s_assignmentCache = new();
 
         [HttpPost("project/{projectId}/assignment")]
         public IActionResult GetAssignment([FromRoute] long projectId)
@@ -202,9 +202,31 @@ namespace Solvro_Backend.Controllers
                 return ApiResponse.NotFound($"Project with the ID of {projectId} doesn't exit.");
 
             var view = new AssignmentView(propositions);
-            s_assignmentCache.Add(view.Id, view);
+            s_assignmentCache.Add(view.Id, propositions);
 
             return ApiResponse.Created(view);
+        }
+
+        [HttpPut("project/{projectId}/assignment/{assignmentId}")]
+        public async Task<IActionResult> ActAssignemnt([FromRoute] long projectId, [FromRoute] Guid assignmentId, [FromQuery] bool? delete)
+        {
+            if (delete.HasValue && delete.Value)
+            {
+                s_assignmentCache.Remove(assignmentId);
+                return ApiResponse.Ok(null);
+            }
+
+            var project = _projectRepository.GetProject(projectId);
+            if (project == null)
+                return ApiResponse.NotFound($"Project with the ID of {projectId} doesn't exist");
+            if (!s_assignmentCache.ContainsKey(assignmentId))
+                return ApiResponse.NotFound($"Assignment with the ID of {assignmentId} doesn't exist");
+
+            bool success = await _projectRepository.ApplyAssignment(projectId, s_assignmentCache[assignmentId]);
+
+            if (success)
+                return ApiResponse.Ok(null);
+            return ApiResponse.BadRequest($"Could not complete pairings, is this the project they were generated for?");
         }
     }
 }

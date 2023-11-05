@@ -45,5 +45,10 @@ namespace Solvro_Backend.Models
         {
             return new ApiResponse(207, "Multi Status", responses);
         }
+
+        public static ApiResponse BadRequest(string message)
+        {
+            return new ApiResponse(400, "Bad Request", message);
+        }
     }
 }

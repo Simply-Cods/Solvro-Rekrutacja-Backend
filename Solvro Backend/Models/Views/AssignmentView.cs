@@ -5,13 +5,13 @@
         public Guid Id { get; set; }
         public List<AssignmentListMember> Propositions { get; set; }
 
-        public AssignmentView(List<(long taskId, long userId)> assignment)
+        public AssignmentView(List<Assignment> assignments)
         {
             Id = Guid.NewGuid();
             Propositions = new();
-            foreach ((long taskId, long userId) in assignment)
+            foreach (var assignment in assignments)
             {
-                Propositions.Add(new AssignmentListMember() { TaskId = taskId, UserId = userId });
+                Propositions.Add(new AssignmentListMember() { TaskId = assignment.TaskId, UserId = assignment.UserId });
             }
         }
     }
