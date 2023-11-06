@@ -8,4 +8,4 @@
 3. Run `docker-compose up` to start
 
 # Documentation
-Available at `http://localhost:5565/swagger`
+Available at `http://localhost:5565/swagger` when API is running
