@@ -2,17 +2,61 @@
 
 namespace Solvro_Backend.Models
 {
+    public class ApiResponse<T> : ApiResponse
+    {
+        /// <summary>
+        /// Response data
+        /// </summary>
+        public T Data { get; set; }
+
+        public ApiResponse(int statusCode, T data, string? massage = null) : base(statusCode, massage) 
+        { 
+            Data = data;
+        }
+
+        public static ApiResponse<T> NotFound(T data)
+        {
+            return new ApiResponse<T>(404, data, "Not Found");
+        }
+
+        public static ApiResponse<T> Ok(T data)
+        {
+            return new ApiResponse<T>(200, data, "OK");
+        }
+
+        public static ApiResponse<T> Created(T data)
+        {
+            return new ApiResponse<T>(201, data, "Created");
+        }
+
+        public static ApiResponse<T> BadRequest(T data)
+        {
+            return new ApiResponse<T>(400, data, "Bad Request");
+        }
+
+        public static ApiResponse<T> ServerError(T data)
+        {
+            return new ApiResponse<T>(500, data, "Internal Server Error");
+        }
+        
+    }
+
     public class ApiResponse : IActionResult
     {
+        /// <summary>
+        /// Http status code
+        /// </summary>
         public int StatusCode { get; set; }
-        public string? Message { get; set; }
-        public object? Response { get; set; }
 
-        public ApiResponse(int statusCode, string? message = null, object? response = null)
+        /// <summary>
+        /// Usually the http status code name
+        /// </summary>
+        public string? Message { get; set; }
+
+        public ApiResponse(int statusCode, string? message = null)
         {
             StatusCode = statusCode;
             Message = message;
-            Response = response;
         }
 
         public async Task ExecuteResultAsync(ActionContext context)
@@ -21,34 +65,19 @@ namespace Solvro_Backend.Models
             await tmp.ExecuteResultAsync(context);
         }
 
-        public static ApiResponse NotFound(object? response) 
+        public static ApiResponse NotFound() 
         {
-            return new ApiResponse(404, "Not Found", response);
+            return new ApiResponse(404, "Not Found");
         }
 
-        public static ApiResponse Ok(object? response)
+        public static ApiResponse Ok()
         {
-            return new ApiResponse(200, "Ok", response);
+            return new ApiResponse(200, "Ok");
         }
 
-        public static ApiResponse Created(object response)
+        public static ApiResponse<IEnumerable<ApiResponse>> MultiStatus(IEnumerable<ApiResponse> data)
         {
-            return new ApiResponse(201, "Created", response);
-        }
-
-        public static ApiResponse ServerError(string message, object response)
-        {
-            return new ApiResponse(500, message, response);
-        }
-
-        public static ApiResponse MultiStatus(List<ApiResponse> responses)
-        {
-            return new ApiResponse(207, "Multi Status", responses);
-        }
-
-        public static ApiResponse BadRequest(string message)
-        {
-            return new ApiResponse(400, "Bad Request", message);
+            return new ApiResponse<IEnumerable<ApiResponse>>(207, data, "Multi Status");
         }
     }
 }

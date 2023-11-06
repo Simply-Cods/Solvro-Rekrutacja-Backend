@@ -26,7 +26,12 @@ namespace Solvro_Backend.Controllers
             _taskRepository = serviceProvider.GetRequiredService<ITaskRepository>();
         }
 
+        /// <summary>
+        /// Returns a list of all projects in the database
+        /// </summary>
+        /// <response code="200">Ok</response>
         [HttpGet("project")]
+        [ProducesResponseType(typeof(ApiResponse<ProjectView[]>), 200)]
         public IActionResult GetAllProjects()
         {
             var dbResult = _projectRepository.GetAllProjects();
@@ -35,15 +40,24 @@ namespace Solvro_Backend.Controllers
             {
                 views = dbResult.Select(p => new ProjectView(p)).ToList();
             }
-            return ApiResponse.Ok(views);
+            return ApiResponse<IEnumerable<ProjectView>>.Ok(views);
         }
 
+        /// <summary>
+        /// Creates a project
+        /// </summary>
+        /// <response code="201">Created</response>
+        /// <response code="207">Multi Status and possible errors</response>
+        /// <response code="404">Not Found</response>
         [HttpPost("project")]
+        [ProducesResponseType(typeof(ApiResponse<ProjectView>), 201)]
+        [ProducesResponseType(typeof(ApiResponse<ApiResponse[]>), 207)]
+        [ProducesResponseType(typeof(ApiResponse<string>), 404)]
         public async Task<IActionResult> CreateProject([FromBody] CreateProjectDto dto)
         {
             User? owner = _userRepository.GetUser(dto.OwnerId!.Value);
             if (owner == null)
-                return ApiResponse.NotFound($"User with the ID of {dto.OwnerId} does not exist and cannot be assigned as owner");            
+                return ApiResponse<string>.NotFound($"User with the ID of {dto.OwnerId} does not exist and cannot be assigned as owner");            
 
             Project project = new()
             {
@@ -52,7 +66,7 @@ namespace Solvro_Backend.Controllers
             };
             project = await _projectRepository.CreateProject(project);
 
-            ApiResponse okResult = ApiResponse.Created(new ProjectView(project));
+            ApiResponse okResult = ApiResponse<ProjectView>.Created(new ProjectView(project));
 
             List<ProjectMemberMapping> mappings = new();
             List<User> members = new();
@@ -66,7 +80,7 @@ namespace Solvro_Backend.Controllers
                 User? member = _userRepository.GetUser(userId);
                 if (member == null)
                 {
-                    errors.Add(ApiResponse.NotFound($"User with the ID of {userId} does not exist and cannot be assigned as member"));
+                    errors.Add(ApiResponse<string>.NotFound($"User with the ID of {userId} does not exist and cannot be assigned as member"));
                     continue;
                 }
                 members.Add(member);
@@ -86,7 +100,7 @@ namespace Solvro_Backend.Controllers
                 await _projectMemberMappingRepository.BulkCreateMapping(mappings);
             } catch (Exception ex)
             {
-                errors.Add(ApiResponse.ServerError("Failed to create member mappings. Exception in response body", ex));
+                errors.Add(ApiResponse<Exception>.ServerError(ex));
             }
 
             if(errors.Count > 1)
@@ -96,31 +110,52 @@ namespace Solvro_Backend.Controllers
             return okResult;
         }
 
+        /// <summary>
+        /// Gets full information about a project
+        /// </summary>
+        /// <response code="200">Ok</response>
+        /// <response code="404">Not Found</response>
         [HttpGet("project/{projectId}")]
+        [ProducesResponseType(typeof(ApiResponse<ProjectFullView>), 200)]
+        [ProducesResponseType(typeof(ApiResponse<string>), 404)]
         public IActionResult GetProject([FromRoute] long projectId)
         {
             Project? project = _projectRepository.GetProject(projectId);
             if (project == null) 
-                return ApiResponse.NotFound($"Project with the ID of {projectId} does not exist");
-            return ApiResponse.Ok(new ProjectFullView(project));
+                return ApiResponse<string>.NotFound($"Project with the ID of {projectId} does not exist");
+            return ApiResponse<ProjectFullView>.Ok(new ProjectFullView(project));
         }
 
+        /// <summary>
+        /// Gets all projects a user is part of
+        /// </summary>
+        /// <response code="200">Ok</response>
         [HttpGet("project/user")]
+        [ProducesResponseType(typeof(ApiResponse<ProjectFullView[]>), 200)]
         public IActionResult GetProjectsForUser([FromQuery] long userId)
         {
-            return ApiResponse.Ok(_projectRepository.GetProjectsForUser(userId).Select(p => new ProjectFullView(p)));
+            return ApiResponse<IEnumerable<ProjectFullView>>.Ok(_projectRepository.GetProjectsForUser(userId).Select(p => new ProjectFullView(p)));
         }
 
+        /// <summary>
+        /// Creates a task in a given project
+        /// </summary>
+        /// <response code="201">Created</response>
+        /// <response code="207">Multi Status and potential errors</response>
+        /// <response code="404">Not Found</response>
         [HttpPost("project/{projectId}/task")]
+        [ProducesResponseType(typeof(ApiResponse<TaskView>), 201)]
+        [ProducesResponseType(typeof(ApiResponse<ApiResponse[]>), 207)]
+        [ProducesResponseType(typeof(ApiResponse<string>), 404)]
         public async Task<IActionResult> CreateTask([FromRoute]long projectId, [FromBody] CreateTaskDto dto)
         {
             Project? project = _projectRepository.GetProject(projectId);
             if (project == null)
-                return ApiResponse.NotFound($"Project with the ID of {projectId} does not exist");
+                return ApiResponse<string>.NotFound($"Project with the ID of {projectId} does not exist");
 
             User? creator = _userRepository.GetUser(dto.CreatorId!.Value);
             if (creator == null)
-                return ApiResponse.NotFound($"User with the ID of {dto.CreatorId} does not exist and cannot be assigned as owner");
+                return ApiResponse<string>.NotFound($"User with the ID of {dto.CreatorId} does not exist and cannot be assigned as owner");
 
             STask task = new()
             {
@@ -139,7 +174,7 @@ namespace Solvro_Backend.Controllers
                 User? assignedUser = _userRepository.GetUser(dto.AssignedUserId.Value);
                 if (assignedUser == null)
                 {
-                    potentialNotFound = ApiResponse.NotFound($"User with the ID of {dto.AssignedUserId} does not exist and cannot be assigned");
+                    potentialNotFound = ApiResponse<string>.NotFound($"User with the ID of {dto.AssignedUserId} does not exist and cannot be assigned");
                 }
                 else
                 {
@@ -150,11 +185,11 @@ namespace Solvro_Backend.Controllers
 
             task = await _taskRepository.CreateTask(task);
 
-            var successResponse = ApiResponse.Created(new TaskView(task));
+            var successResponse = ApiResponse<TaskView>.Created(new TaskView(task));
 
             if(potentialNotFound != null)
             {
-                return ApiResponse.MultiStatus(new()
+                return ApiResponse.MultiStatus(new List<ApiResponse>()
                 {
                     successResponse,
                     potentialNotFound
@@ -164,7 +199,17 @@ namespace Solvro_Backend.Controllers
             return successResponse;
         }
 
+        /// <summary>
+        /// Updates a task status
+        /// </summary>
+        /// <remarks>
+        /// This endpoint will set the <code>Task.CompletedAt</code> field if status is set to <code>TaskState.Done</code>
+        /// </remarks>
+        /// <response code="200">Ok</response>
+        /// <response code="404">Not Found</response>
         [HttpPut("project/{projectId}/task/{taskId}")]
+        [ProducesResponseType(typeof(ApiResponse<TaskView>), 200)]
+        [ProducesResponseType(typeof(ApiResponse<string>), 404)]
         public async Task<IActionResult> UpdateTaskStatus([FromRoute] long projectId, [FromRoute] long taskId, [FromBody] UpdateTaskStatusDto dto)
         {
             (STask? task, bool projectExists) = _taskRepository.SelectTask(projectId, taskId);
@@ -172,8 +217,8 @@ namespace Solvro_Backend.Controllers
             if(task == null)
             {
                 return projectExists
-                    ? ApiResponse.NotFound($"Task with the ID of {taskId} does not exist.")
-                    : ApiResponse.NotFound($"Project with the ID of {projectId} does not exist.");
+                    ? ApiResponse<string>.NotFound($"Task with the ID of {taskId} does not exist.")
+                    : ApiResponse<string>.NotFound($"Project with the ID of {projectId} does not exist.");
             }
 
             task.State = dto.State!.Value;
@@ -189,44 +234,58 @@ namespace Solvro_Backend.Controllers
 
             task = await _taskRepository.UpdateTask(task);
 
-            return ApiResponse.Ok(new TaskView(task));
+            return ApiResponse<TaskView>.Ok(new TaskView(task));
         }
 
         private static Dictionary<Guid, List<Assignment>> s_assignmentCache = new();
 
+        /// <summary>
+        /// Returns proposed assignment of tasks to developers
+        /// </summary>
+        /// <response code="201">Created</response>
         [HttpPost("project/{projectId}/assignment")]
+        [ProducesResponseType(typeof(ApiResponse<AssignmentView>), 201)]
         public IActionResult GetAssignment([FromRoute] long projectId)
         {
             var propositions = _projectRepository.GetAssignment(projectId);
             if (propositions == null)
-                return ApiResponse.NotFound($"Project with the ID of {projectId} doesn't exit.");
+                return ApiResponse<string>.NotFound($"Project with the ID of {projectId} doesn't exit.");
 
             var view = new AssignmentView(propositions);
             s_assignmentCache.Add(view.Id, propositions);
 
-            return ApiResponse.Created(view);
+            return ApiResponse<AssignmentView>.Created(view);
         }
 
+        /// <summary>
+        /// Applies the proposed assignment
+        /// </summary>
+        /// <response code="200">Ok</response>
+        /// <response code="400">Bad Request - probable project id mismatch</response>
+        /// <response code="404">Not Found</response>
         [HttpPut("project/{projectId}/assignment/{assignmentId}")]
+        [ProducesResponseType(typeof(ApiResponse), 200)]
+        [ProducesResponseType(typeof(ApiResponse<string>), 400)]
+        [ProducesResponseType(typeof(ApiResponse<string>), 404)]
         public async Task<IActionResult> ActAssignemnt([FromRoute] long projectId, [FromRoute] Guid assignmentId, [FromQuery] bool? delete)
         {
             if (delete.HasValue && delete.Value)
             {
                 s_assignmentCache.Remove(assignmentId);
-                return ApiResponse.Ok(null);
+                return ApiResponse.Ok();
             }
 
             var project = _projectRepository.GetProject(projectId);
             if (project == null)
-                return ApiResponse.NotFound($"Project with the ID of {projectId} doesn't exist");
+                return ApiResponse<string>.NotFound($"Project with the ID of {projectId} doesn't exist");
             if (!s_assignmentCache.ContainsKey(assignmentId))
-                return ApiResponse.NotFound($"Assignment with the ID of {assignmentId} doesn't exist");
+                return ApiResponse<string>.NotFound($"Assignment with the ID of {assignmentId} doesn't exist");
 
             bool success = await _projectRepository.ApplyAssignment(projectId, s_assignmentCache[assignmentId]);
 
             if (success)
-                return ApiResponse.Ok(null);
-            return ApiResponse.BadRequest($"Could not complete pairings, is this the project they were generated for?");
+                return ApiResponse.Ok();
+            return ApiResponse<string>.BadRequest($"Could not complete pairings, is this the project they were generated for?");
         }
     }
 }

@@ -42,6 +42,8 @@ services:
       - MYSQL_HOST=db
     networks:
       - appnetwork
+    ports:
+      - 127.0.0.1:5565:80
 
 networks:
   appnetwork:

@@ -17,6 +17,9 @@ builder.Services.AddSwaggerGen(options =>
         Version = "v1",
         Title = "Rekrutacja KN Solvro",
     });
+
+    var filePath = Path.Combine(AppContext.BaseDirectory, "Solvro Backend.xml");
+    options.IncludeXmlComments(filePath);
 });
 
 string connectionString =
@@ -26,7 +29,7 @@ string connectionString =
     $"Uid={Environment.GetEnvironmentVariable("MYSQL_USER")};" +
     $"Pwd={Environment.GetEnvironmentVariable("MYSQL_PASSWORD")};";
 
-if (true) // debug purposes
+if (false) // debug purposes
 {
     connectionString =
         "Server=localhost;" +
@@ -55,12 +58,8 @@ using (var scope = app.Services.CreateScope())
     scope.ServiceProvider.GetRequiredService<DataContext>().Database.Migrate();
 }
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 
